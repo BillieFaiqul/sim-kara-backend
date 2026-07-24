@@ -23,6 +23,15 @@ class JwtMiddleware
 
             $payload = JWT::decode($token, new Key(config('jwt.secret'), config('jwt.algorithm', 'HS256')));
 
+            $user = \App\Models\User::find($payload->id);
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not found',
+                ], 404);
+            }
+
+            auth()->setUser($user);
             $request->user = $payload;
 
             return $next($request);

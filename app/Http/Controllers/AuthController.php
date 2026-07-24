@@ -55,6 +55,7 @@ class AuthController extends Controller
         }
 
         $token = $this->generateJWT($user);
+        $menuItems = $this->getMenuByRole($user->role);
 
         return response()->json([
             'success' => true,
@@ -66,7 +67,68 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
             ],
+            'menu_items' => $menuItems,
         ], 200);
+    }
+
+    private function getMenuByRole(string $role): array
+    {
+        $baseMenu = [
+            [
+                'label' => 'Dashboard',
+                'href' => '/dashboard',
+                'icon' => 'Home',
+            ],
+            [
+                'label' => 'Semua Karya',
+                'href' => '/semua-karya',
+                'icon' => 'FileText',
+            ],
+        ];
+
+        $roleSpecificMenu = match($role) {
+            'admin' => [
+                [
+                    'label' => 'Validasi',
+                    'href' => '/validasi',
+                    'icon' => 'CheckSquare',
+                    'submenu' => [
+                        [
+                            'label' => 'Validasi Pending',
+                            'href' => '/validasi/pending',
+                            'icon' => 'Clock',
+                        ],
+                        [
+                            'label' => 'Riwayat Validasi',
+                            'href' => '/validasi/riwayat',
+                            'icon' => 'History',
+                        ],
+                    ],
+                ],
+                [
+                    'label' => 'Kelola User',
+                    'href' => '/kelola-user',
+                    'icon' => 'Users',
+                ],
+            ],
+            'dosen' => [
+                [
+                    'label' => 'Karya Saya',
+                    'href' => '/karya-saya',
+                    'icon' => 'Upload',
+                ],
+            ],
+            'mahasiswa' => [
+                [
+                    'label' => 'Karya Saya',
+                    'href' => '/karya-saya',
+                    'icon' => 'Upload',
+                ],
+            ],
+            default => [],
+        };
+
+        return array_merge($baseMenu, $roleSpecificMenu);
     }
 
     public function logout(Request $request)
