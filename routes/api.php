@@ -19,6 +19,7 @@ Route::get('/karya-stats', [KaryaController::class, 'getStats']);
 // Karya Routes - Protected
 Route::middleware(JwtMiddleware::class)->group(function () {
     Route::post('/karya', [KaryaController::class, 'store']);
+    Route::post('/karya/upload', [KaryaController::class, 'uploadFile']);
     Route::put('/karya/{id}', [KaryaController::class, 'update']);
     Route::delete('/karya/{id}', [KaryaController::class, 'delete']);
     Route::post('/karya/{id}/submit', [KaryaController::class, 'submit']);

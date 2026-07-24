@@ -57,7 +57,7 @@ class KaryaController extends Controller
             $query->where('tahun', $tahun);
         }
 
-        $karya = $query->orderBy('tanggal_submit', 'desc')->paginate(10);
+        $karya = $query->orderBy('updated_at', 'desc')->paginate(10);
 
         return response()->json([
             'success' => true,
@@ -85,7 +85,7 @@ class KaryaController extends Controller
         $search = $request->query('search', '');
         $status = $request->query('status', '');
 
-        $query = Karya::where('user_id', $user->id);
+        $query = Karya::with('user:id,name,email,role')->where('user_id', $user->id);
 
         if ($search) {
             $query->where('judul', 'like', "%$search%");
@@ -95,17 +95,11 @@ class KaryaController extends Controller
             $query->where('status', $status);
         }
 
-        $karya = $query->orderBy('tanggal_submit', 'desc')->paginate(10);
+        $karya = $query->orderBy('created_at', 'desc')->get();
 
         return response()->json([
             'success' => true,
-            'data' => $karya->items(),
-            'pagination' => [
-                'current_page' => $karya->currentPage(),
-                'total' => $karya->total(),
-                'per_page' => $karya->perPage(),
-                'last_page' => $karya->lastPage(),
-            ],
+            'data' => $karya,
         ]);
     }
 
@@ -140,26 +134,24 @@ class KaryaController extends Controller
         $validated = $request->validate([
             'judul' => 'required|string|max:255',
             'jenis' => 'required|in:Publikasi,Penelitian,Pengabdian,Prestasi,HKI,Artikel',
-            'level' => 'required|in:Lokal,Nasional,Internasional',
+            'level' => 'required|in:International,National,Local',
+            'pencapaian' => 'nullable|string|max:100',
             'tahun' => 'required|integer|min:2000|max:' . date('Y'),
             'deskripsi' => 'nullable|string',
-            'file' => 'nullable|file|max:10240', // 10MB max
+            'file_path' => 'nullable|string',
+            'file_pendukung_path' => 'nullable|string',
         ]);
-
-        $filePath = null;
-        if ($request->hasFile('file')) {
-            $file = $request->file('file');
-            $filePath = $file->store('karya', 'public');
-        }
 
         $karya = Karya::create([
             'user_id' => $user->id,
             'judul' => $validated['judul'],
             'jenis' => $validated['jenis'],
             'level' => $validated['level'],
+            'pencapaian' => $validated['pencapaian'] ?? null,
             'tahun' => $validated['tahun'],
             'deskripsi' => $validated['deskripsi'] ?? null,
-            'file_path' => $filePath,
+            'file_path' => $validated['file_path'] ?? null,
+            'file_pendukung_path' => $validated['file_pendukung_path'] ?? null,
             'status' => 'draft',
         ]);
 
@@ -200,23 +192,29 @@ class KaryaController extends Controller
         $validated = $request->validate([
             'judul' => 'sometimes|string|max:255',
             'jenis' => 'sometimes|in:Publikasi,Penelitian,Pengabdian,Prestasi,HKI,Artikel',
-            'level' => 'sometimes|in:Lokal,Nasional,Internasional',
+            'level' => 'sometimes|in:International,National,Local',
+            'pencapaian' => 'nullable|string|max:100',
             'tahun' => 'sometimes|integer|min:2000|max:' . date('Y'),
             'deskripsi' => 'nullable|string',
-            'file' => 'nullable|file|max:10240', // 10MB max
+            'file_path' => 'nullable|string',
+            'file_pendukung_path' => 'nullable|string',
         ]);
 
         $updateData = [
             'judul' => $validated['judul'] ?? $karya->judul,
             'jenis' => $validated['jenis'] ?? $karya->jenis,
             'level' => $validated['level'] ?? $karya->level,
+            'pencapaian' => $validated['pencapaian'] ?? $karya->pencapaian,
             'tahun' => $validated['tahun'] ?? $karya->tahun,
             'deskripsi' => $validated['deskripsi'] ?? $karya->deskripsi,
         ];
 
-        if ($request->hasFile('file')) {
-            $file = $request->file('file');
-            $updateData['file_path'] = $file->store('karya', 'public');
+        if (!empty($validated['file_path'])) {
+            $updateData['file_path'] = $validated['file_path'];
+        }
+
+        if (!empty($validated['file_pendukung_path'])) {
+            $updateData['file_pendukung_path'] = $validated['file_pendukung_path'];
         }
 
         $karya->update($updateData);
@@ -353,6 +351,38 @@ class KaryaController extends Controller
         }
 
         return response()->download($filePath);
+    }
+
+    public function uploadFile(Request $request)
+    {
+        $user = $this->getUserFromToken($request);
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        $validated = $request->validate([
+            'file' => 'required|file|max:10240',
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $filePath = $file->store('karya', 'public');
+
+            return response()->json([
+                'success' => true,
+                'file_path' => $filePath,
+                'url' => asset('storage/' . $filePath),
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal upload file: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function getStats(Request $request)
