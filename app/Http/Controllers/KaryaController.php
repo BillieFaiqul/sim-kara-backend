@@ -133,6 +133,8 @@ class KaryaController extends Controller
 
         $validated = $request->validate([
             'judul' => 'required|string|max:255',
+            'nama' => 'nullable|string|max:255',
+            'nip_nim' => 'nullable|string|max:50',
             'jenis' => 'required|in:Publikasi,Penelitian,Pengabdian,Prestasi,HKI,Artikel',
             'level' => 'required|in:International,National,Local',
             'pencapaian' => 'nullable|string|max:100',
@@ -145,6 +147,8 @@ class KaryaController extends Controller
         $karya = Karya::create([
             'user_id' => $user->id,
             'judul' => $validated['judul'],
+            'nama' => $validated['nama'] ?? null,
+            'nip_nim' => $validated['nip_nim'] ?? null,
             'jenis' => $validated['jenis'],
             'level' => $validated['level'],
             'pencapaian' => $validated['pencapaian'] ?? null,
@@ -191,6 +195,8 @@ class KaryaController extends Controller
 
         $validated = $request->validate([
             'judul' => 'sometimes|string|max:255',
+            'nama' => 'nullable|string|max:255',
+            'nip_nim' => 'nullable|string|max:50',
             'jenis' => 'sometimes|in:Publikasi,Penelitian,Pengabdian,Prestasi,HKI,Artikel',
             'level' => 'sometimes|in:International,National,Local',
             'pencapaian' => 'nullable|string|max:100',
@@ -198,10 +204,13 @@ class KaryaController extends Controller
             'deskripsi' => 'nullable|string',
             'file_path' => 'nullable|string',
             'file_pendukung_path' => 'nullable|string',
+            'status' => 'sometimes|in:draft',
         ]);
 
         $updateData = [
             'judul' => $validated['judul'] ?? $karya->judul,
+            'nama' => $validated['nama'] ?? $karya->nama,
+            'nip_nim' => $validated['nip_nim'] ?? $karya->nip_nim,
             'jenis' => $validated['jenis'] ?? $karya->jenis,
             'level' => $validated['level'] ?? $karya->level,
             'pencapaian' => $validated['pencapaian'] ?? $karya->pencapaian,
@@ -215,6 +224,10 @@ class KaryaController extends Controller
 
         if (!empty($validated['file_pendukung_path'])) {
             $updateData['file_pendukung_path'] = $validated['file_pendukung_path'];
+        }
+
+        if (!empty($validated['status'])) {
+            $updateData['status'] = $validated['status'];
         }
 
         $karya->update($updateData);
@@ -299,11 +312,22 @@ class KaryaController extends Controller
             ], 403);
         }
 
-        if ($karya->status !== 'draft') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Hanya karya draft yang bisa dihapus',
-            ], 400);
+        // Admin can delete verified or rejected
+        // User can only delete draft
+        if ($user->role === 'admin') {
+            if ($karya->status !== 'verified' && $karya->status !== 'rejected') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Admin hanya bisa menghapus karya verified atau rejected',
+                ], 400);
+            }
+        } else {
+            if ($karya->status !== 'draft') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Hanya karya draft yang bisa dihapus',
+                ], 400);
+            }
         }
 
         $karya->delete();
@@ -387,14 +411,20 @@ class KaryaController extends Controller
 
     public function getStats(Request $request)
     {
-        $stats = [
-            'publikasi' => Karya::where('jenis', 'Publikasi')->where('status', 'verified')->count(),
-            'penelitian' => Karya::where('jenis', 'Penelitian')->where('status', 'verified')->count(),
-            'pengabdian' => Karya::where('jenis', 'Pengabdian')->where('status', 'verified')->count(),
-            'prestasi' => Karya::where('jenis', 'Prestasi')->where('status', 'verified')->count(),
-            'hki' => Karya::where('jenis', 'HKI')->where('status', 'verified')->count(),
-            'artikel' => Karya::where('jenis', 'Artikel')->where('status', 'verified')->count(),
-        ];
+        $tahun = $request->query('tahun');
+
+        $jenisList = ['Publikasi', 'Penelitian', 'Pengabdian', 'Prestasi', 'HKI', 'Artikel'];
+        $stats = [];
+
+        foreach ($jenisList as $jenis) {
+            $query = Karya::where('jenis', $jenis)->where('status', 'verified');
+
+            if ($tahun) {
+                $query->where('tahun', $tahun);
+            }
+
+            $stats[strtolower($jenis)] = $query->count();
+        }
 
         $chartData = [];
         foreach ($stats as $key => $value) {
@@ -408,6 +438,105 @@ class KaryaController extends Controller
             'success' => true,
             'stats' => $stats,
             'chart_data' => $chartData,
+        ]);
+    }
+
+    public function approve(Request $request, $id)
+    {
+        $user = $this->getUserFromToken($request);
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        if ($user->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Forbidden',
+            ], 403);
+        }
+
+        $karya = Karya::find($id);
+
+        if (!$karya) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Karya tidak ditemukan',
+            ], 404);
+        }
+
+        if ($karya->status !== 'submitted') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya karya dengan status submitted yang bisa disetujui',
+            ], 400);
+        }
+
+        $karya->update([
+            'status' => 'verified',
+        ]);
+
+        $karya->refresh();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Karya berhasil disetujui',
+            'data' => $karya,
+        ]);
+    }
+
+    public function reject(Request $request, $id)
+    {
+        $user = $this->getUserFromToken($request);
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        if ($user->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Forbidden',
+            ], 403);
+        }
+
+        $karya = Karya::find($id);
+
+        if (!$karya) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Karya tidak ditemukan',
+            ], 404);
+        }
+
+        if ($karya->status !== 'submitted') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya karya dengan status submitted yang bisa ditolak',
+            ], 400);
+        }
+
+        $validated = $request->validate([
+            'alasan_reject' => 'required|string|max:500',
+        ]);
+
+        $karya->update([
+            'status' => 'rejected',
+            'alasan_reject' => $validated['alasan_reject'],
+        ]);
+
+        $karya->refresh();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Karya berhasil ditolak',
+            'data' => $karya,
         ]);
     }
 }

@@ -151,7 +151,21 @@ class AuthController extends Controller
                 ], 401);
             }
 
-            $payload = JWT::decode($token, new Key(config('jwt.secret'), config('jwt.algorithm', 'HS256')));
+            try {
+                $payload = JWT::decode($token, new Key(config('jwt.secret'), config('jwt.algorithm', 'HS256')));
+            } catch (\Firebase\JWT\ExpiredException $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token expired',
+                    'code' => 'TOKEN_EXPIRED',
+                ], 401);
+            } catch (\Exception $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid token',
+                    'code' => 'INVALID_TOKEN',
+                ], 401);
+            }
 
             $user = User::find($payload->id);
 
@@ -172,7 +186,8 @@ class AuthController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid token',
+                'message' => 'Token refresh failed',
+                'code' => 'REFRESH_FAILED',
             ], 401);
         }
     }
