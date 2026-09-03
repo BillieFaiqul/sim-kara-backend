@@ -20,6 +20,9 @@ if (!\$user) {
 }
 "
 
+echo "Linking storage..."
+php artisan storage:link --force || true
+
 echo "Setting permissions..."
 chown -R www-data:www-data /var/www/html
 chmod -R 755 /var/www/html/storage

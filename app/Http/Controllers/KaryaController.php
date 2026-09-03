@@ -394,6 +394,30 @@ class KaryaController extends Controller
 
         try {
             $file = $request->file('file');
+
+            // Upload ke Cloudinary jika credential tersedia (storage permanen)
+            if (env('CLOUDINARY_CLOUD_NAME')) {
+                $cloudinary = new \Cloudinary\Cloudinary([
+                    'cloud' => [
+                        'cloud_name' => env('CLOUDINARY_CLOUD_NAME'),
+                        'api_key' => env('CLOUDINARY_API_KEY'),
+                        'api_secret' => env('CLOUDINARY_API_SECRET'),
+                    ],
+                ]);
+
+                $result = $cloudinary->uploadApi()->upload($file->getRealPath(), [
+                    'folder' => 'karya',
+                    'resource_type' => 'auto',
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'file_path' => $result['secure_url'],
+                    'url' => $result['secure_url'],
+                ], 200);
+            }
+
+            // Fallback: simpan lokal (sementara, hilang saat restart)
             $filePath = $file->store('karya', 'public');
 
             return response()->json([
