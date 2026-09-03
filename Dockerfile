@@ -35,8 +35,12 @@ RUN chown -R www-data:www-data /var/www/html && \
 # Configure Apache
 RUN sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/sites-available/000-default.conf
 
+# Copy entrypoint script
+COPY entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 # Expose port
 EXPOSE 80
 
-# Start Apache
-CMD ["apache2-foreground"]
+# Run entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
